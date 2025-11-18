@@ -1,0 +1,27 @@
+{
+  "name": "music-platform-backend",
+  "version": "1.0.0",
+  "description": "Music platform backend - HTTP REST API only (Socket.IO removed)",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.12.2",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "expo-server-sdk": "^4.0.0",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.2",
+    "mysql2": "^3.14.5",
+    "nodemailer": "^7.0.6",
+    "nodemon": "^3.1.10",
+    "socket.io": "^4.7.1"
+  }
+}

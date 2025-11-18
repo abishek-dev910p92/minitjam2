@@ -1,0 +1,91 @@
+// utils/push.js - Expo push notifications helper
+const { Expo } = require('expo-server-sdk');
+const pool = require('../db');
+
+const expo = new Expo();
+
+async function ensurePushTokensTable(conn) {
+  try {
+    await conn.query(`CREATE TABLE IF NOT EXISTS PushTokens (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_type VARCHAR(20) NOT NULL,
+      user_id INT NOT NULL,
+      token VARCHAR(255) NOT NULL UNIQUE,
+      platform VARCHAR(20) DEFAULT NULL,
+      allow_preview TINYINT(1) DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_user (user_type, user_id)
+    )`);
+  } catch (e) {
+    console.warn('ensurePushTokensTable failed', e?.message || e);
+  }
+}
+
+async function getUserTokens(userType, userId) {
+  const conn = await pool.getConnection();
+  try {
+    await ensurePushTokensTable(conn);
+    const [rows] = await conn.query(
+      'SELECT token, allow_preview FROM PushTokens WHERE user_type = ? AND user_id = ?',
+      [userType, userId]
+    );
+    return rows;
+  } finally {
+    conn.release();
+  }
+}
+
+async function sendPushToUser(userType, userId, { title, body, data, sound = 'default' }) {
+  try {
+    const tokens = await getUserTokens(userType, userId);
+    if (!tokens || tokens.length === 0) return { sent: 0 };
+    const messages = [];
+    for (const t of tokens) {
+      const token = t.token;
+      if (!Expo.isExpoPushToken(token)) continue;
+      messages.push({
+        to: token,
+        title,
+        body: t.allow_preview ? body : 'New message',
+        data,
+        sound,
+      });
+    }
+    if (messages.length === 0) return { sent: 0 };
+    const chunks = expo.chunkPushNotifications(messages);
+    const tickets = [];
+    for (const chunk of chunks) {
+      try {
+        const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+        tickets.push(...ticketChunk);
+      } catch (e) {
+        console.warn('expo push send failed', e?.message || e);
+      }
+    }
+    return { sent: messages.length, tickets };
+  } catch (e) {
+    console.warn('sendPushToUser failed', e?.message || e);
+    return { sent: 0, error: e?.message || String(e) };
+  }
+}
+
+async function registerToken(userType, userId, token, platform, allow_preview = 1) {
+  const conn = await pool.getConnection();
+  try {
+    await ensurePushTokensTable(conn);
+    await conn.query(
+      `INSERT INTO PushTokens (user_type, user_id, token, platform, allow_preview) VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE platform = VALUES(platform), allow_preview = VALUES(allow_preview), updated_at = CURRENT_TIMESTAMP`,
+      [userType, userId, token, platform || null, allow_preview ? 1 : 0]
+    );
+    return { ok: true };
+  } catch (e) {
+    console.warn('registerToken error', e?.message || e);
+    return { ok: false, error: e?.message || String(e) };
+  } finally {
+    conn.release();
+  }
+}
+
+module.exports = { sendPushToUser, registerToken };

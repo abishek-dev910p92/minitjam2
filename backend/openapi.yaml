@@ -1,0 +1,684 @@
+openapi: 3.0.3
+info:
+  title: Music Platform API
+  version: 1.0.0
+  description: "OpenAPI 3 specification for the Music Platform backend. Base path assumed to be /api — if your app mounts the router on /api, prepend /api to paths."
+servers:
+  - url: https://localhost:3000
+    description: Local development
+paths:
+  /auth/signup/artist:
+    post:
+      summary: Register a new artist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtistSignup'
+      responses:
+        '200':
+          description: Created artist with token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /auth/signup/club:
+    post:
+      summary: Register a new club
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClubSignup'
+      responses:
+        '200':
+          description: Created club with token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /auth/login:
+    post:
+      summary: Login as artist or club
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: token + user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /auth/otp/send:
+    post:
+      summary: Send email OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendOtp'
+      responses:
+        '200':
+          description: OTP sent (or dev OTP returned)
+          content:
+            application/json:
+              schema:
+                type: object
+  /auth/otp/verify:
+    post:
+      summary: Verify email OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtp'
+      responses:
+        '200':
+          description: OTP verified
+          content:
+            application/json:
+              schema:
+                type: object
+  /auth/password/forgot:
+    post:
+      summary: Start password reset (send OTP)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                role:
+                  type: string
+                  enum: [artist, club]
+      responses:
+        '200':
+          description: OTP sent
+  /auth/password/reset:
+    post:
+      summary: Reset password using OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPassword'
+      responses:
+        '200':
+          description: Password reset success
+
+  /artists/featured:
+    get:
+      summary: Get featured (recent) artists
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: List of artists
+  /artists/search:
+    get:
+      summary: Search artists by name
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Search results
+  /artists/{artistId}/gigs:
+    get:
+      summary: Get upcoming gigs for an artist
+      parameters:
+        - in: path
+          name: artistId
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated gigs
+  /artists/{artistId}:
+    get:
+      summary: Get artist profile
+      parameters:
+        - in: path
+          name: artistId
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Artist object
+    patch:
+      summary: Update artist (authenticated artist only)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: artistId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtistUpdate'
+      responses:
+        '200':
+          description: Updated artist
+    post:
+      summary: Change password
+      operationId: changePasswordArtist
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: artistId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                oldPassword:
+                  type: string
+                newPassword:
+                  type: string
+
+  /bands:
+    post:
+      summary: Create a band (artist only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Created band
+  /bands/{bandId}/invites:
+    post:
+      summary: Invite an artist to band
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bandId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                invited_artist_id: { type: integer }
+                message: { type: string }
+  /bands/invites/{inviteId}/respond:
+    post:
+      summary: Respond to band invite
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [accept, reject]
+                role:
+                  type: string
+
+  /opportunities:
+    post:
+      summary: Create opportunity (club only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpportunityCreate'
+    get:
+      summary: List opportunities
+      parameters:
+        - in: query
+          name: club_id
+          schema:
+            type: integer
+        - in: query
+          name: page
+          schema:
+            type: integer
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+  /opportunities/{id}:
+    get:
+      summary: Get opportunity
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+    patch:
+      summary: Update opportunity (club owner)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                description: { type: string }
+                event_date: { type: string, format: date }
+                event_time: { type: string }
+    delete:
+      summary: Delete opportunity (club owner)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+
+  /applications/{opportunityId}/apply:
+    post:
+      summary: Apply to opportunity (artist/band)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: opportunityId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                artist_id: { type: integer }
+                band_id: { type: integer }
+  /applications/club:
+    get:
+      summary: List applications for club's opportunities
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Array of applications
+  /applications/{applicationId}/accept:
+    post:
+      summary: Club accepts an application (create booking)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: applicationId
+          required: true
+          schema:
+            type: integer
+
+  /bookings:
+    get:
+      summary: List bookings for current user
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: per_page
+          schema: { type: integer }
+    post:
+      summary: Create a booking (club only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreate'
+  /bookings/{bookingId}:
+    patch:
+      summary: Update booking (club owner)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fee: { type: number }
+                notes: { type: string }
+    delete:
+      summary: Cancel booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: bookingId
+          required: true
+          schema: { type: integer }
+
+  /chats:
+    post:
+      summary: Send a chat message
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatMessage'
+    get:
+      summary: Get conversation
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: sender_type
+          required: true
+          schema: { type: string }
+        - in: query
+          name: sender_id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: receiver_type
+          required: true
+          schema: { type: string }
+        - in: query
+          name: receiver_id
+          required: true
+          schema: { type: integer }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: per_page
+          schema: { type: integer }
+  /chats/conversations:
+    get:
+      summary: Get user conversation summaries
+      security:
+        - bearerAuth: []
+
+  /media:
+    post:
+      summary: Upload media (multipart)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                media_type:
+                  type: string
+    get:
+      summary: List media
+      parameters:
+        - in: query
+          name: owner_type
+          schema: { type: string }
+        - in: query
+          name: owner_id
+          schema: { type: integer }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: per_page
+          schema: { type: integer }
+  /media/{mediaId}:
+    get:
+      summary: Get media metadata
+      parameters:
+        - in: path
+          name: mediaId
+          required: true
+          schema: { type: integer }
+    patch:
+      summary: Update media metadata (owner only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                media_type: { type: string }
+    post:
+      summary: Replace media file (owner only)
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+    delete:
+      summary: Delete media (owner only)
+      security:
+        - bearerAuth: []
+
+  /venues/search:
+    get:
+      summary: Search venues
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer }
+        - in: query
+          name: limit
+          schema: { type: integer }
+  /venues/featured:
+    get:
+      summary: Featured venues
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ArtistSignup:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string }
+        phone: { type: string }
+        genre_name: { type: string }
+        genre_id: { type: integer }
+        location: { type: object }
+        location_id: { type: integer }
+        bio: { type: string }
+      example:
+        name: "Indie Artist"
+        email: "indie@example.com"
+        password: "password123"
+        genre_name: "Indie"
+        location: { city: "Mumbai" }
+
+    ClubSignup:
+      type: object
+      required: [name, email, password]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        password: { type: string }
+        location: { type: object }
+        location_id: { type: integer }
+        description: { type: string }
+        capacity: { type: integer }
+
+    LoginRequest:
+      type: object
+      required: [email, password, role]
+      properties:
+        email: { type: string }
+        password: { type: string }
+        role: { type: string, enum: [artist, club] }
+      example:
+        email: "indie@example.com"
+        password: "password123"
+        role: "artist"
+
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string }
+        user: { type: object }
+
+    SendOtp:
+      type: object
+      properties:
+        email: { type: string }
+        purpose: { type: string }
+
+    VerifyOtp:
+      type: object
+      properties:
+        email: { type: string }
+        otp: { type: string }
+        purpose: { type: string }
+
+    ResetPassword:
+      type: object
+      properties:
+        email: { type: string }
+        otp: { type: string }
+        role: { type: string }
+        new_password: { type: string }
+
+    ArtistUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        bio: { type: string }
+        genre_name: { type: string }
+        genre_id: { type: integer }
+        location: { type: object }
+        location_id: { type: integer }
+
+    OpportunityCreate:
+      type: object
+      required: [event_date]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        event_date: { type: string, format: date }
+        event_time: { type: string }
+
+    BookingCreate:
+      type: object
+      required: [opportunity_id]
+      properties:
+        artist_id: { type: integer }
+        band_id: { type: integer }
+        opportunity_id: { type: integer }
+        fee: { type: number }
+        notes: { type: string }
+
+    ChatMessage:
+      type: object
+      required: [sender_type, sender_id, receiver_type, receiver_id, message]
+      properties:
+        sender_type: { type: string }
+        sender_id: { type: integer }
+        receiver_type: { type: string }
+        receiver_id: { type: integer }
+        message: { type: string }
+      example:
+        sender_type: "artist"
+        sender_id: 12
+        receiver_type: "club"
+        receiver_id: 3
+        message: "Hi, are you available on 2025-11-15?"
+
+security:
+  - bearerAuth: []
