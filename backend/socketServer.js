@@ -194,11 +194,18 @@ class SocketServer {
         }
       });
 
-      // Read receipts (broadcast only; persistence optional)
-      socket.on('read', (data) => {
+      // Read receipts: persist and broadcast
+      socket.on('read', async (data) => {
         const { sender_type, sender_id, receiver_type, receiver_id, chat_id } = data || {};
-        const roomId = dmRoomId({ sender_type, sender_id, receiver_type, receiver_id });
-        socket.to(roomId).emit('read', { chat_id, reader_type: user.role, reader_id: user.id, read_at: new Date() });
+        if (!chat_id) return;
+        try {
+          const updated = await chatCtrl.markMessageRead(chat_id, user.role, user.id);
+          const roomId = dmRoomId({ sender_type, sender_id, receiver_type, receiver_id });
+          const payload = { chat_id, reader_type: user.role, reader_id: user.id, read_at: updated?.read_at || new Date() };
+          socket.to(roomId).emit('read', payload);
+        } catch (_e) {
+          // ignore
+        }
       });
 
       // Client-side display confirmation (for logging/metrics)
@@ -209,6 +216,42 @@ class SocketServer {
         } catch (e) {
           console.warn('[socket] client:received log failed', e?.message || e);
         }
+      });
+
+      socket.on('user-online', async (userId) => {
+        try {
+          if (Number(userId) !== Number(user.id)) return;
+          console.log('[socket] user-online', { userId, room: `user:${user.role}:${user.id}` });
+          const conn = await pool.getConnection();
+          try {
+            await conn.beginTransaction();
+            const [rows] = await conn.query(
+              'SELECT * FROM Chats WHERE receiver_type = ? AND receiver_id = ? AND (delivered_status = 0 OR delivered_status IS NULL) ORDER BY sent_at ASC',
+              [user.role, user.id]
+            );
+            console.log('[socket] undelivered rows count', rows.length);
+            const ids = [];
+            const userRoom = `user:${user.role}:${user.id}`;
+            const roomExists = this.io.sockets.adapter.rooms.has(userRoom);
+            console.log('[socket] user room exists?', roomExists);
+            for (const m of rows) {
+              ids.push(m.chat_id);
+              const payload = { ...m };
+              try { payload.sent_at = new Date(m.sent_at).toISOString(); } catch {}
+              this.io.to(userRoom).emit('new-message', payload);
+              console.log('[socket] new-message flush to', userRoom, 'chat_id', m.chat_id);
+            }
+            if (ids.length > 0) {
+              await conn.query('UPDATE Chats SET delivered_status = 1 WHERE chat_id IN (?)', [ids]);
+            }
+            await conn.commit();
+          } catch (e) {
+            try { await conn.rollback(); } catch {}
+            console.error('user-online flush error', e);
+          } finally {
+            conn.release();
+          }
+        } catch (_e) {}
       });
 
       // Group room join

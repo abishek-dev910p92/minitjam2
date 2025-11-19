@@ -86,7 +86,7 @@
       "^react-native$": "<rootDir>/__mocks__/react-native.js"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!react-native|@react-native|react-native-svg)"
+      "node_modules/(?!(react-native|@react-native|react-native-svg|expo|expo-router|expo-modules-core|@expo)/)"
     ]
   },
   "private": true

@@ -210,6 +210,8 @@ const ChatScreen = () => {
 
     // --- Auto-scroll to bottom on new messages, initial load, and resize ---
     const prevMessagesLenRef = useRef<number>(0);
+    const todayPreloadDoneRef = useRef<boolean>(false);
+    const pagesPreloadedRef = useRef<number>(0);
     useEffect(() => {
         // Only scroll if new messages are appended and user is near the bottom
         const prevLen = prevMessagesLenRef.current;
@@ -230,6 +232,51 @@ const ChatScreen = () => {
         }
     }, [messages]);
 
+    const dateKeyFor = React.useCallback((d: Date) => {
+        const p = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    }, []);
+
+    const getEarliestDateKey = React.useCallback(() => {
+        let earliest: string | null = null;
+        (messages || []).forEach((m) => {
+            const dt = m.sent_at ? new Date(m.sent_at) : new Date();
+            const k = dateKeyFor(dt);
+            if (earliest == null || k < earliest) earliest = k;
+        });
+        return earliest;
+    }, [messages, dateKeyFor]);
+
+    useEffect(() => {
+        if (pageRef.current !== 1) return;
+        if (todayPreloadDoneRef.current) return;
+        const now = new Date();
+        const todayKey = dateKeyFor(now);
+        const earliest = getEarliestDateKey();
+        if (!earliest) return;
+        if (earliest === todayKey && hasMoreRef.current && !loading && !loadingMore) {
+            const beforeH = lastContentHeightRef.current;
+            setLoadingMore(true);
+            loadMessagesPage(pageRef.current + 1, { append: true })
+                .then(() => {
+                    pageRef.current += 1;
+                    pagesPreloadedRef.current += 1;
+                    const afterH = lastContentHeightRef.current;
+                    const delta = Math.max(0, afterH - beforeH);
+                    const target = (currentOffsetRef.current || 0) + delta;
+                    try {
+                        (sectionListRef.current as any)?.scrollToOffset?.({ offset: target, animated: false });
+                    } catch {}
+                })
+                .finally(() => {
+                    setLoadingMore(false);
+                    const e2 = getEarliestDateKey();
+                    const done = e2 !== todayKey || pagesPreloadedRef.current >= 5 || !hasMoreRef.current;
+                    if (done) todayPreloadDoneRef.current = true;
+                });
+        }
+    }, [messages, loading, loadingMore, getEarliestDateKey, dateKeyFor]);
+
     useEffect(() => {
         // Initial scroll on mount
         if (messages.length > 0 && autoScrollEnabledRef.current) {
@@ -245,6 +292,26 @@ const ChatScreen = () => {
             }, 32);
         }
     }, []);
+
+    useEffect(() => {
+        const s = socketRef.current;
+        if (!s || !socketReady || !currentUserType || currentUserId == null) return;
+        try {
+            (messages || []).forEach((m) => {
+                const incoming = !(String(m.sender_type) === String(currentUserType) && String(m.sender_id) === String(currentUserId));
+                const meIsReceiver = String(m.receiver_type) === String(currentUserType) && String(m.receiver_id) === String(currentUserId);
+                if (incoming && meIsReceiver && !m.read_status && m.chat_id) {
+                    s.emit('read', {
+                        sender_type: m.sender_type,
+                        sender_id: m.sender_id,
+                        receiver_type: m.receiver_type,
+                        receiver_id: m.receiver_id,
+                        chat_id: m.chat_id,
+                    });
+                }
+            });
+        } catch {}
+    }, [messages, socketReady, currentUserType, currentUserId]);
 
     useEffect(() => {
         // Scroll on window resize
@@ -342,6 +409,31 @@ const ChatScreen = () => {
         return all;
     };
 
+    const normalizeMessage = React.useCallback((raw: any) => {
+        const m = { ...raw };
+        try { if (m.sent_at) m.sent_at = new Date(m.sent_at).toISOString(); } catch {}
+        try { if (m.read_at) m.read_at = new Date(m.read_at).toISOString(); } catch {}
+        if (!m.optimistic) {
+            const isOutgoing = (
+                String(m.sender_type) === String(currentUserType) &&
+                String(m.sender_id) === String(currentUserId)
+            );
+            const readFlag = Number(m.read_status || 0) === 1 || !!m.read_at;
+            const deliveredFlag = Number(m.delivered_status || 0) === 1;
+            if (isOutgoing) {
+                if (readFlag) {
+                    m.status = 'read';
+                } else if (deliveredFlag) {
+                    m.status = 'delivered';
+                } else {
+                    m.status = m.status || 'sending';
+                }
+            }
+            m.optimistic = false;
+        }
+        return m;
+    }, [currentUserType, currentUserId]);
+
     // Load a specific page (append when loading older)
     const loadMessagesPage = async (page: number, { append }: { append: boolean }) => {
         if (!currentUserType || !currentUserId) return;
@@ -414,7 +506,8 @@ const ChatScreen = () => {
                 const dir2 = st === you_t && sid === String(you_id) && rt2 === me_t && rid2 === String(me_id);
                 return dir1 || dir2;
             });
-            setMessages(prev => append ? mergeMessages(prev, filtered) : mergeMessages([], filtered));
+            const normalized = filtered.map(normalizeMessage);
+            setMessages(prev => append ? mergeMessages(prev, normalized) : mergeMessages([], normalized));
             // Update pagination state: if received full batch, assume there may be more
             hasMoreRef.current = (filtered.length >= perPageRef.current);
             if (!append) pageRef.current = 1; // reset on initial load
@@ -518,7 +611,7 @@ const ChatScreen = () => {
                     (String(newMessage.sender_type) === String(currentUserType) && String(newMessage.sender_id) === String(currentUserId) && String(newMessage.receiver_type) === String(receiver_type) && String(newMessage.receiver_id) === String(receiver_id)) ||
                     (String(newMessage.sender_type) === String(receiver_type) && String(newMessage.sender_id) === String(receiver_id) && String(newMessage.receiver_type) === String(currentUserType) && String(newMessage.receiver_id) === String(currentUserId))
                 ))
-                    ? [...prev, newMessage]
+                    ? [...prev, normalizeMessage(newMessage)]
                     : prev
             ));
             
@@ -624,7 +717,7 @@ const ChatScreen = () => {
                         });
                         try { s.emit('client:received', { chat_id: msg.chat_id, kind: 'dm' }); } catch {}
                     } else {
-                        appendMessage({ ...msg, message: decrypted });
+                        appendMessage(normalizeMessage({ ...msg, message: decrypted }));
                         try { s.emit('client:received', { chat_id: msg.chat_id, kind: 'dm' }); } catch {}
                         // Immediately acknowledge read when displaying incoming DM in active conversation
                         try {
@@ -668,7 +761,7 @@ const ChatScreen = () => {
                         });
                         try { s.emit('client:received', { chat_id: msg.chat_id, kind: 'dm' }); } catch {}
                     } else {
-                        appendMessage(msg);
+                        appendMessage(normalizeMessage(msg));
                         try { s.emit('client:received', { chat_id: msg.chat_id, kind: 'dm' }); } catch {}
                         try {
                             s.emit('read', {
@@ -725,7 +818,7 @@ const ChatScreen = () => {
                         msg.room_id ?? receiver_id,
                     );
                     console.log('[socket] group:message recv', { room_id: msg.room_id, sent_at: msg.sent_at });
-                    appendMessage({ ...msg, message: decrypted });
+                    appendMessage(normalizeMessage({ ...msg, message: decrypted }));
                     try { s.emit('client:received', { room_id: msg.room_id, kind: 'group' }); } catch {}
                     // Clear unread/highlight for this group conversation
                     try {
@@ -734,7 +827,7 @@ const ChatScreen = () => {
                     } catch {}
                 } catch {
                     console.warn('[socket] decrypt failed for group message', msg?.room_id);
-                    appendMessage(msg);
+                    appendMessage(normalizeMessage(msg));
                     try { s.emit('client:received', { room_id: msg.room_id, kind: 'group' }); } catch {}
                     try {
                         const s = useNotificationStore.getState();
@@ -755,7 +848,7 @@ const ChatScreen = () => {
                         msg.receiver_id,
                     );
                     console.log('[socket] notify:new_message', { chat_id: msg.chat_id });
-                    appendMessage({ ...msg, message: decrypted });
+                    appendMessage(normalizeMessage({ ...msg, message: decrypted }));
                     try { s.emit('client:received', { chat_id: msg.chat_id, kind: 'notify' }); } catch {}
                     // Clear unread/highlight if notification arrives while viewing
                     try {
@@ -772,6 +865,7 @@ const ChatScreen = () => {
                 setError(null);
                 setSocketReady(true);
                 flushQueue();
+                try { s.emit('user-online', currentUserId); } catch {}
             });
             // Heartbeat: respond to server pings to keep connection healthy
             s.on('heartbeat:ping', (_payload: any) => {
@@ -786,6 +880,7 @@ const ChatScreen = () => {
             s.on('reconnect', () => {
                 setError(null);
                 setSocketReady(true);
+                try { s.emit('user-online', currentUserId); } catch {}
             });
             s.on('reconnect_error', () => {
                 setError('Socket reconnection failed');
@@ -796,6 +891,29 @@ const ChatScreen = () => {
                     setError('Socket disconnected');
                 }
                 setSocketReady(false);
+            });
+
+            s.on('new-message', async (msg: any) => {
+                try {
+                    if (!msg || msg.chat_id == null || msg.sender_id == null || msg.receiver_id == null) return;
+                    const same = isSameDMConversation(msg);
+                    if (!same) return;
+                    appendMessage(normalizeMessage(msg));
+                    try { s.emit('client:received', { chat_id: msg.chat_id, kind: 'flush' }); } catch {}
+                    try {
+                        s.emit('read', {
+                            sender_type: msg.sender_type,
+                            sender_id: msg.sender_id,
+                            receiver_type,
+                            receiver_id,
+                            chat_id: msg.chat_id,
+                        });
+                    } catch {}
+                    try {
+                        const st = useNotificationStore.getState();
+                        if (st.initialized) st.markRead(partyKey);
+                    } catch {}
+                } catch {}
             });
         })();
         return () => {
@@ -1126,9 +1244,10 @@ const ChatScreen = () => {
                         const isOutgoing = currentUserType && currentUserId && (String(m.sender_type) === String(currentUserType) && String(m.sender_id) === String(currentUserId));
                         const name = m.sender_name ?? '';
                         const time = m.sent_at ? new Date(m.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                        const readTime = m.read_at ? new Date(m.read_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
                         const statusText = isOutgoing
                             ? (m.status === 'read'
-                                ? 'Read'
+                                ? (readTime ? `Read • ${readTime}` : 'Read')
                                 : m.status === 'delivered' 
                                     ? 'Delivered'
                                     : m.status === 'error'

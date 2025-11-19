@@ -11,4 +11,10 @@ router.get('/', auth(true), ctrl.getConversation);
 // New endpoints for conversation management
 router.get('/conversations', auth(true), ctrl.getUserConversations);
 
+// Read receipt update
+router.patch('/:chat_id/read', auth(true), ctrl.updateReadStatus);
+
+// Unread counts for current user
+router.get('/unread', auth(true), ctrl.getUnreadCounts);
+
 module.exports = router;

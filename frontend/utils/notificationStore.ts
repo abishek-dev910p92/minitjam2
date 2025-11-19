@@ -18,7 +18,7 @@ interface NotificationState {
   initialized: boolean;
   rehydrateError: string | null;
   // actions
-  incrementUnread: (key: PartyKey, opts?: { star?: boolean; previewText?: string; title?: string }) => void;
+  incrementUnread: (key: PartyKey, opts?: { star?: boolean; previewText?: string; title?: string; force?: boolean; count?: number }) => void;
   markRead: (key: PartyKey) => void;
   markAllRead: () => void;
   setStar: (key: PartyKey, starred: boolean) => void;
@@ -26,6 +26,7 @@ interface NotificationState {
   setLastMessageAt: (key: PartyKey, ts: number) => void;
   hydrate: () => Promise<void>;
   reset: () => void;
+  setUnreadFromServer: (map: UnreadMap) => void;
 }
 
 // Track foreground/background to decide local notifications
@@ -64,12 +65,13 @@ export const useNotificationStore = create<NotificationState>()(
       incrementUnread: (key, opts) => {
         const now = Date.now();
         const lastTs = get().lastMessageAt[key] ?? 0;
-        // De-dup within 800ms to avoid double increment from DM room + user notify channel
-        if (now - lastTs < 800) {
+        // De-dup within 800ms for realtime; allow force for offline flush
+        if (!opts?.force && (now - lastTs < 800)) {
           return;
         }
         const prev = get().unreadByKey[key] ?? 0;
-        const unreadByKey = { ...get().unreadByKey, [key]: prev + 1 };
+        const delta = Math.max(1, Number(opts?.count ?? 1));
+        const unreadByKey = { ...get().unreadByKey, [key]: prev + delta };
         const totalUnread = Object.values(unreadByKey).reduce((a, b) => a + (b || 0), 0);
         const highlighted = { ...get().highlighted, [key]: true };
         const starred = opts?.star ? { ...get().starred, [key]: true } : get().starred;
@@ -82,6 +84,13 @@ export const useNotificationStore = create<NotificationState>()(
           const body = opts?.previewText || 'You have a new message';
           scheduleLocalNotification(title, body);
         }
+      },
+      setUnreadFromServer: (map) => {
+        const unreadByKey = { ...(map || {}) };
+        const totalUnread = Object.values(unreadByKey).reduce((a, b) => a + (b || 0), 0);
+        const highlighted: FlagMap = {};
+        Object.keys(unreadByKey).forEach((k) => { if ((unreadByKey as any)[k] > 0) highlighted[k] = true; });
+        set({ unreadByKey, totalUnread, highlighted });
       },
       markRead: (key) => {
         const unreadByKey = { ...get().unreadByKey };
@@ -114,6 +123,7 @@ export const useNotificationStore = create<NotificationState>()(
           if (anyStore.persist?.rehydrate) {
             await anyStore.persist.rehydrate();
           }
+          set({ initialized: true, rehydrateError: null });
         } catch (e) {
           set({ initialized: true, rehydrateError: (e as any)?.message || 'Failed to rehydrate' });
         }
@@ -135,13 +145,9 @@ export const useNotificationStore = create<NotificationState>()(
       }),
       onRehydrateStorage: () => (state, error) => {
         if (error) {
-          try {
-            (useNotificationStore as any).setState({ initialized: true, rehydrateError: String(error) });
-          } catch {}
+          try { (useNotificationStore as any).setState({ initialized: true, rehydrateError: String(error) }); } catch {}
         } else {
-          try {
-            (useNotificationStore as any).setState({ initialized: true, rehydrateError: null });
-          } catch {}
+          try { (useNotificationStore as any).setState({ initialized: true, rehydrateError: null }); } catch {}
         }
       },
     }

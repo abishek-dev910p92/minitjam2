@@ -116,14 +116,29 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
           timeout: 20000,
           auth: { token: token || '' },
         });
+        notifySocketRef.current.on('connect', () => {
+          try {
+            const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
+            notifySocketRef.current.emit('user-online', currentUserId);
+          } catch {}
+        });
+        notifySocketRef.current.on('reconnect', () => {
+          try {
+            const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
+            notifySocketRef.current.emit('user-online', currentUserId);
+          } catch {}
+        });
 
-        // DM notifications via per-user room
+        // DM notifications via per-user room — count only when current user is receiver
         notifySocketRef.current.on('notify:new_message', (msg: any) => {
           try {
             const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
             const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
-            const otherType = (msg.sender_type === currentUserType && Number(msg.sender_id) === Number(currentUserId)) ? msg.receiver_type : msg.sender_type;
-            const otherId = (msg.sender_type === currentUserType && Number(msg.sender_id) === Number(currentUserId)) ? msg.receiver_id : msg.sender_id;
+            const isIncoming = !(msg.sender_type === currentUserType && Number(msg.sender_id) === Number(currentUserId));
+            const addressedToCurrentUser = (msg.receiver_type === currentUserType && Number(msg.receiver_id) === Number(currentUserId));
+            if (!isIncoming || !addressedToCurrentUser) return;
+            const otherType = msg.sender_type;
+            const otherId = msg.sender_id;
             const key = makePartyKey(otherType, otherId);
             incrementUnread(key, { star: true, previewText: String(msg?.message ?? ''), title: 'New message' });
           } catch {}
@@ -144,16 +159,49 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
           }
         } catch {}
 
-        // Group messages: increment unread/star
+        // Group messages — count only when sent by someone else
         notifySocketRef.current.on('group:message', (msg: any) => {
           try {
             const roomId = msg?.room_id;
             if (!roomId) return;
-            // Only star for incoming messages; we cannot compute sender reliably here without user data duplication
+            const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
+            const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
+            const isIncoming = !(msg.sender_type === currentUserType && Number(msg.sender_id) === Number(currentUserId));
+            if (!isIncoming) return;
             const key = makePartyKey('group', String(roomId));
             incrementUnread(key, { star: true, previewText: String(msg?.ciphertext ?? ''), title: 'New group message' });
           } catch {}
         });
+
+        notifySocketRef.current.on('new-message', (msg: any) => {
+          try {
+            if (!msg || msg.chat_id == null || msg.sender_id == null || msg.receiver_id == null) return;
+            const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
+            const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
+            const isIncoming = !(msg.sender_type === currentUserType && Number(msg.sender_id) === Number(currentUserId));
+            const addressedToCurrentUser = (msg.receiver_type === currentUserType && Number(msg.receiver_id) === Number(currentUserId));
+            if (!isIncoming || !addressedToCurrentUser) return;
+            const key = makePartyKey(msg.sender_type, msg.sender_id);
+            incrementUnread(key, { star: true, previewText: String(msg?.message ?? ''), title: 'New message', force: true });
+          } catch {}
+        });
+
+        // Initial unread reconciliation from server on app open
+        try {
+          const headers: Record<string, string> = {};
+          if (token) headers.Authorization = `Bearer ${token}`;
+          const res = await fetch(apiEndpoints.chat + '/unread', { headers });
+          if (res.ok) {
+            const json = await res.json();
+            const map: Record<string, number> = {};
+            (json?.conversations || []).forEach((c: any) => {
+              const key = makePartyKey(c?.other_party_type, c?.other_party_id);
+              map[key] = Number(c?.unread_count || 0);
+            });
+            try { (useNotificationStore as any).setState?.({}); } catch {}
+            try { useNotificationStore.getState().setUnreadFromServer(map); } catch {}
+          }
+        } catch {}
       } catch {}
     };
     setup();
