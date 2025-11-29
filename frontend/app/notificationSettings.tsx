@@ -1,21 +1,29 @@
 import { router } from 'expo-router';
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiEndpoints from './api/baseUrl';
 const ArrowLeftIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="#16120f" viewBox="0 0 256 256"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"></path></svg>`;
 
 const NotificationSwitch = ({ 
   label, 
   description, 
-  initialState = false 
+  initialState = false,
+  onToggle,
 }: {
   label: string;
   description: string;
   initialState?: boolean;
+  onToggle?: (v: boolean) => void;
 }) => {
   const [isEnabled, setIsEnabled] = useState(initialState);
-  const toggleSwitch = () => setIsEnabled(previousState => !previousState);
+  const toggleSwitch = () => {
+    const v = !isEnabled;
+    setIsEnabled(v);
+    try { onToggle?.(v); } catch {}
+  };
 
   return (
     <View style={styles.switchContainer}>
@@ -34,6 +42,36 @@ const NotificationSwitch = ({
 };
 
 const notificationSettings = () => {
+  const [enabled, setEnabled] = useState(false);
+  const [allowPreview, setAllowPreview] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const e = await AsyncStorage.getItem('notifEnabled');
+        const p = await AsyncStorage.getItem('notifAllowPreview');
+        setEnabled(e === '1');
+        setAllowPreview(p !== '0');
+      } catch {}
+    })();
+  }, []);
+
+  const updateServerPrefs = async (newEnabled?: boolean, newAllowPreview?: boolean) => {
+    try {
+      const token = await AsyncStorage.getItem('expoPushToken');
+      const auth = await AsyncStorage.getItem('userToken');
+      if (!token || !auth) return;
+      const body: any = { token, platform: Platform.OS };
+      if (newAllowPreview != null) body.allow_preview = !!newAllowPreview;
+      if (newEnabled != null) body.enabled = !!newEnabled;
+      await fetch(`${apiEndpoints.baseURL}notifications/register-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${auth}` },
+        body: JSON.stringify(body),
+      }).catch(() => {});
+    } catch {}
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -46,10 +84,10 @@ const notificationSettings = () => {
         </View>
 
         <ScrollView>
-          <NotificationSwitch label="Allow Notifications" description="Turn on all notifications" />
+          <NotificationSwitch label="Allow Notifications" description="Turn on all notifications" initialState={enabled} onToggle={async (v) => { setEnabled(v); await AsyncStorage.setItem('notifEnabled', v ? '1' : '0'); await updateServerPrefs(v, undefined); }} />
 
           <Text style={styles.sectionHeader}>Messages</Text>
-          <NotificationSwitch label="New Messages" description="When someone sends you a message" />
+          <NotificationSwitch label="New Messages" description="When someone sends you a message" initialState={allowPreview} onToggle={async (v) => { setAllowPreview(v); await AsyncStorage.setItem('notifAllowPreview', v ? '1' : '0'); await updateServerPrefs(undefined, v); }} />
 
           <Text style={styles.sectionHeader}>Bookings</Text>
           <NotificationSwitch label="Booking Requests" description="When someone requests to book you" />

@@ -123,6 +123,19 @@ export const useNotificationStore = create<NotificationState>()(
           if (anyStore.persist?.rehydrate) {
             await anyStore.persist.rehydrate();
           }
+          try {
+            const raw = await AsyncStorage.getItem('notification-store');
+            if (raw) {
+              const persisted = JSON.parse(String(raw));
+              const st: any = (persisted && typeof persisted === 'object' && 'state' in persisted) ? (persisted as any).state : (persisted || {});
+              const unreadByKey: UnreadMap = st.unreadByKey || {};
+              const highlighted: FlagMap = st.highlighted || {};
+              const starred: FlagMap = st.starred || {};
+              const lastMessageAt: Record<PartyKey, number> = st.lastMessageAt || {};
+              const totalUnread = Object.values(unreadByKey).reduce((a, b) => a + (Number(b) || 0), 0);
+              (useNotificationStore as any).setState({ unreadByKey, highlighted, starred, lastMessageAt, totalUnread });
+            }
+          } catch {}
           set({ initialized: true, rehydrateError: null });
         } catch (e) {
           set({ initialized: true, rehydrateError: (e as any)?.message || 'Failed to rehydrate' });

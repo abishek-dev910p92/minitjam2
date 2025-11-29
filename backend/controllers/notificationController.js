@@ -101,10 +101,10 @@ async function dismiss(req, res) {
 // POST /api/notifications/register-token
 async function registerPushToken(req, res) {
   if (!req.user) return res.status(401).json({ error: 'Auth required' });
-  const { token, platform, allow_preview } = req.body || {};
+  const { token, platform, allow_preview, enabled } = req.body || {};
   if (!token) return res.status(400).json({ error: 'Token required' });
   try {
-    const result = await registerToken(req.user.role, req.user.id, token, platform, !!allow_preview);
+    const result = await registerToken(req.user.role, req.user.id, token, platform, !!allow_preview, enabled == null ? 1 : (enabled ? 1 : 0));
     if (!result.ok) return res.status(500).json({ error: result.error || 'Failed to register token' });
     res.json({ ok: true });
   } catch (e) {

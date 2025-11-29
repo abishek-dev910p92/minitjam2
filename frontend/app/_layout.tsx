@@ -51,6 +51,26 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
           if (!req.granted) return;
         }
 
+        if (Platform.OS === 'android') {
+          try {
+            await Notifications.setNotificationChannelAsync('messages', {
+              name: 'Messages',
+              importance: Notifications.AndroidImportance.MAX,
+              sound: 'default',
+              vibrationPattern: [0, 250, 250, 250],
+              lightColor: '#FF231F7C',
+            } as any);
+          } catch {}
+        } else {
+          try {
+            await Notifications.setNotificationCategoryAsync('MESSAGE', [{
+              identifier: 'OPEN',
+              buttonTitle: 'Open',
+              options: { opensAppToForeground: true },
+            }]);
+          } catch {}
+        }
+
         // Resolve projectId for Expo push token
         const projectId =
           (Constants as any)?.expoConfig?.extra?.eas?.projectId ??
@@ -67,7 +87,8 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
         const token = (expoToken as any).data;
         const userToken = await AsyncStorage.getItem('userToken');
         if (!userToken || !token) return;
-        await fetch(`${apiEndpoints.baseURL}/api/notifications/register-token`, {
+        await AsyncStorage.setItem('expoPushToken', String(token));
+        await fetch(`${apiEndpoints.baseURL}notifications/register-token`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -75,6 +96,21 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
           },
           body: JSON.stringify({ token, platform: Platform.OS, allow_preview: true }),
         }).catch(() => {});
+
+        Notifications.addNotificationReceivedListener((notification: any) => {
+          try {
+            const data: any = notification?.request?.content?.data;
+            if (data?.screen === 'chats') {
+              const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
+              const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
+              const isIncoming = !(data.sender_type === currentUserType && Number(data.sender_id) === Number(currentUserId));
+              const addressedToCurrentUser = (data.receiver_type === currentUserType && Number(data.receiver_id) === Number(currentUserId));
+              if (!isIncoming || !addressedToCurrentUser) return;
+              const key = makePartyKey(data.sender_type, data.sender_id);
+              incrementUnread(key, { star: true, previewText: String(notification?.request?.content?.body ?? ''), title: String(notification?.request?.content?.title ?? 'New message'), force: true });
+            }
+          } catch {}
+        });
 
         // Deep-link from notification
         sub = Notifications.addNotificationResponseReceivedListener((response: any) => {
