@@ -108,6 +108,10 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
               if (!isIncoming || !addressedToCurrentUser) return;
               const key = makePartyKey(data.sender_type, data.sender_id);
               incrementUnread(key, { star: true, previewText: String(notification?.request?.content?.body ?? ''), title: String(notification?.request?.content?.title ?? 'New message'), force: true });
+              try {
+                const total = useNotificationStore.getState().totalUnread || 0;
+                Notifications.setBadgeCountAsync?.(total);
+              } catch {}
             }
           } catch {}
         });
@@ -120,6 +124,10 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
               const { sender_type, sender_id, receiver_type, receiver_id } = data;
               router.push(`/chats?sender_type=${sender_type}&sender_id=${sender_id}&receiver_type=${receiver_type}&receiver_id=${receiver_id}`);
             }
+            try {
+              const total = useNotificationStore.getState().totalUnread || 0;
+              Notifications.setBadgeCountAsync?.(total);
+            } catch {}
           } catch (e) {}
         });
       } catch (e) {
@@ -177,6 +185,11 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
             const otherId = msg.sender_id;
             const key = makePartyKey(otherType, otherId);
             incrementUnread(key, { star: true, previewText: String(msg?.message ?? ''), title: 'New message' });
+            try {
+              const Notifications = await import('expo-notifications');
+              const total = useNotificationStore.getState().totalUnread || 0;
+              Notifications.setBadgeCountAsync?.(total);
+            } catch {}
           } catch {}
         });
 
@@ -206,6 +219,11 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
             if (!isIncoming) return;
             const key = makePartyKey('group', String(roomId));
             incrementUnread(key, { star: true, previewText: String(msg?.ciphertext ?? ''), title: 'New group message' });
+            try {
+              const Notifications = await import('expo-notifications');
+              const total = useNotificationStore.getState().totalUnread || 0;
+              Notifications.setBadgeCountAsync?.(total);
+            } catch {}
           } catch {}
         });
 
@@ -219,6 +237,11 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
             if (!isIncoming || !addressedToCurrentUser) return;
             const key = makePartyKey(msg.sender_type, msg.sender_id);
             incrementUnread(key, { star: true, previewText: String(msg?.message ?? ''), title: 'New message', force: true });
+            try {
+              const Notifications = await import('expo-notifications');
+              const total = useNotificationStore.getState().totalUnread || 0;
+              Notifications.setBadgeCountAsync?.(total);
+            } catch {}
           } catch {}
         });
 
@@ -236,6 +259,11 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
             });
             try { (useNotificationStore as any).setState?.({}); } catch {}
             try { useNotificationStore.getState().setUnreadFromServer(map); } catch {}
+            try {
+              const Notifications = await import('expo-notifications');
+              const total = useNotificationStore.getState().totalUnread || 0;
+              Notifications.setBadgeCountAsync?.(total);
+            } catch {}
           }
         } catch {}
       } catch {}

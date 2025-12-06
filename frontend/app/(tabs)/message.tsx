@@ -155,6 +155,84 @@ export default function MessagesScreen() {
       });
     }, []);
 
+    const nameCacheRef = React.useRef<Map<string, { name: string; image: string }>>(new Map());
+    const cacheKey = 'contact-cache';
+    const cachePut = React.useCallback(async (type: string, id: string | number, name: string, image: string) => {
+      const key = `${String(type)}:${String(id)}`;
+      nameCacheRef.current.set(key, { name, image });
+      try {
+        const raw = await AsyncStorage.getItem(cacheKey);
+        const obj = raw ? JSON.parse(raw) : {};
+        obj[key] = { name, image };
+        const keys = Object.keys(obj);
+        if (keys.length > 200) {
+          delete obj[keys[0]];
+        }
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(obj));
+      } catch {}
+    }, []);
+    const cacheGet = React.useCallback((type: string, id: string | number) => {
+      const key = `${String(type)}:${String(id)}`;
+      return nameCacheRef.current.get(key) || null;
+    }, []);
+    useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const raw = await AsyncStorage.getItem(cacheKey);
+          const obj = raw ? JSON.parse(raw) : {};
+          Object.keys(obj || {}).forEach((k) => {
+            if (!cancelled) nameCacheRef.current.set(k, obj[k]);
+          });
+        } catch {}
+      })();
+      return () => { cancelled = true; };
+    }, []);
+
+    const getContactInfo = React.useCallback(async (type: string, id: string | number) => {
+      const base = apiEndpoints.featuredVenues.replace('venues/featured', '');
+      const token = await AsyncStorage.getItem('userToken');
+      const headers: any = token ? { Authorization: `Bearer ${token}` } : undefined;
+      let url = '';
+      if (String(type) === 'artist') url = base + `artists/${encodeURIComponent(String(id))}`;
+      else url = base + `venues/${encodeURIComponent(String(id))}`;
+      const r = await fetch(url, { headers });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const name = j?.name || j?.display_name || j?.venue_name || (String(type) === 'artist' ? 'Unknown Artist' : 'Unknown Venue');
+      const image = j?.profile_image_url || j?.avatar || j?.image || 'https://picsum.photos/seed/fallback/100';
+      return { name, image };
+    }, []);
+
+    const ensureConversation = React.useCallback((otherType: string, otherId: string | number) => {
+      const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
+      const currentUserId = (user as any)?.artist_id ?? (user as any)?.club_id ?? (user as any)?.id ?? '';
+      setConversations((prev) => {
+        const exists = prev.some((c) => String(c.other_party_type) === String(otherType) && String(c.other_party_id) === String(otherId));
+        if (exists) return prev;
+        const cached = cacheGet(String(otherType), otherId);
+        const n = cached?.name || (String(otherType) === 'artist' ? 'Loading Artist…' : 'Loading Venue…');
+        const img = cached?.image || 'https://picsum.photos/seed/fallback/100';
+        const href = `/chats?receiver_type=${otherType}&receiver_id=${otherId}&sender_type=${currentUserType}&sender_id=${currentUserId}&receiver_name=${encodeURIComponent(n)}&receiver_avatar=${encodeURIComponent(img)}`;
+        const next = [{ other_party_type: otherType, other_party_id: otherId, name: n, image: img, href, lastActivityAt: Date.now(), message_count: 1 }, ...prev];
+        return sortConversations(next);
+      });
+      (async () => {
+        const cached = cacheGet(String(otherType), otherId);
+        if (cached) return;
+        try {
+          const info = await getContactInfo(String(otherType), otherId);
+          if (!info) return;
+          await cachePut(String(otherType), otherId, info.name, info.image);
+          setConversations((prev) => prev.map((c) => (
+            String(c.other_party_type) === String(otherType) && String(c.other_party_id) === String(otherId)
+              ? { ...c, name: info.name, image: info.image }
+              : c
+          )));
+        } catch {}
+      })();
+    }, [user, cacheGet, cachePut, getContactInfo, sortConversations]);
+
     // Highlights are managed in global store now, persisted automatically
 
     // Fetch groups list
@@ -241,6 +319,17 @@ export default function MessagesScreen() {
         if (!cancelled) {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setConversations(sortConversations(detailed));
+          try {
+            const obj: any = {};
+            detailed.forEach((c: any) => {
+              const key = `${String(c.other_party_type)}:${String(c.other_party_id)}`;
+              obj[key] = { name: c.name, image: c.image };
+              nameCacheRef.current.set(key, { name: c.name, image: c.image });
+            });
+            const raw = await AsyncStorage.getItem(cacheKey);
+            const old = raw ? JSON.parse(raw) : {};
+            await AsyncStorage.setItem(cacheKey, JSON.stringify({ ...old, ...obj }));
+          } catch {}
         }
       } catch (_e: any) {
         if (_e?.name === 'AbortError') return;
@@ -285,6 +374,7 @@ export default function MessagesScreen() {
 
         // Message notifications increment unread/star via store (DM room broadcast)
         socketRef.current.on('message', (msg: any) => {
+          if (!msg || !msg.sender_type || msg.sender_id == null || !msg.receiver_type || msg.receiver_id == null) return;
           const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
           const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
           const otherType = (msg.sender_type === currentUserType && msg.sender_id === currentUserId)
@@ -303,6 +393,7 @@ export default function MessagesScreen() {
             ));
             return sortConversations(updated);
           });
+          ensureConversation(String(otherType), otherId);
           // Store-backed star/unread only for incoming messages
           if (!(msg.sender_type === currentUserType && Number(msg.sender_id) === Number(currentUserId))) {
             const key = makePartyKey(otherType, otherId);
@@ -312,6 +403,7 @@ export default function MessagesScreen() {
 
         // User-specific notification channel toggles star/unread even if not joined to DM room
         socketRef.current.on('notify:new_message', (msg: any) => {
+          if (!msg || !msg.sender_type || msg.sender_id == null || !msg.receiver_type || msg.receiver_id == null) return;
           const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
           const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
           // Determine the other participant
@@ -334,6 +426,15 @@ export default function MessagesScreen() {
             const key = makePartyKey(otherType, otherId);
             incrementUnread(key, { star: true, previewText: String(msg?.message ?? ''), title: 'New message' });
           } catch {}
+          ensureConversation(String(otherType), otherId);
+        });
+
+        socketRef.current.on('dm:started', (payload: any) => {
+          const t = payload?.other_party_type;
+          const i = payload?.other_party_id;
+          if (!t || i == null) return;
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          ensureConversation(String(t), i);
         });
 
         // Group message notifications

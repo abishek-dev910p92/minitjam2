@@ -129,14 +129,18 @@ export const useNotificationStore = create<NotificationState>()(
               const persisted = JSON.parse(String(raw));
               const st: any = (persisted && typeof persisted === 'object' && 'state' in persisted) ? (persisted as any).state : (persisted || {});
               const unreadByKey: UnreadMap = st.unreadByKey || {};
-              const highlighted: FlagMap = st.highlighted || {};
               const starred: FlagMap = st.starred || {};
               const lastMessageAt: Record<PartyKey, number> = st.lastMessageAt || {};
+              const highlighted: FlagMap = {};
+              Object.keys(unreadByKey).forEach((k) => { if ((unreadByKey as any)[k] > 0) highlighted[k] = true; });
               const totalUnread = Object.values(unreadByKey).reduce((a, b) => a + (Number(b) || 0), 0);
-              (useNotificationStore as any).setState({ unreadByKey, highlighted, starred, lastMessageAt, totalUnread });
+              (useNotificationStore as any).setState({ unreadByKey, starred, highlighted, lastMessageAt, totalUnread, initialized: true, rehydrateError: null });
+            } else {
+              set({ initialized: true, rehydrateError: null });
             }
-          } catch {}
-          set({ initialized: true, rehydrateError: null });
+          } catch {
+            set({ initialized: true, rehydrateError: null });
+          }
         } catch (e) {
           set({ initialized: true, rehydrateError: (e as any)?.message || 'Failed to rehydrate' });
         }
@@ -152,7 +156,6 @@ export const useNotificationStore = create<NotificationState>()(
       partialize: (state) => ({
         unreadByKey: state.unreadByKey,
         starred: state.starred,
-        highlighted: state.highlighted,
         totalUnread: state.totalUnread,
         lastMessageAt: state.lastMessageAt,
       }),
@@ -160,7 +163,18 @@ export const useNotificationStore = create<NotificationState>()(
         if (error) {
           try { (useNotificationStore as any).setState({ initialized: true, rehydrateError: String(error) }); } catch {}
         } else {
-          try { (useNotificationStore as any).setState({ initialized: true, rehydrateError: null }); } catch {}
+          try {
+            const s: any = state || {};
+            const unread: UnreadMap = s.unreadByKey || {};
+            const starred: FlagMap = s.starred || {};
+            const lastMessageAt: Record<PartyKey, number> = s.lastMessageAt || {};
+            const highlighted: FlagMap = { ...(s.highlighted || {}) };
+            Object.keys(unread).forEach((k) => { if ((unread as any)[k] > 0) highlighted[k] = true; });
+            const total = Object.values(unread).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+            (useNotificationStore as any).setState({ unreadByKey: unread, starred, highlighted, lastMessageAt, totalUnread: total, initialized: true, rehydrateError: null });
+          } catch {
+            try { (useNotificationStore as any).setState({ initialized: true, rehydrateError: null }); } catch {}
+          }
         }
       },
     }

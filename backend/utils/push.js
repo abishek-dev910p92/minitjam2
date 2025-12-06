@@ -55,6 +55,21 @@ async function ensurePushLogsTable(conn) {
   } catch (_e) {}
 }
 
+async function getTotalUnread(userType, userId) {
+  const conn = await pool.getConnection();
+  try {
+    const [rows] = await conn.query(
+      'SELECT COUNT(*) AS total FROM Chats WHERE receiver_type = ? AND receiver_id = ? AND read_status = 0',
+      [userType, userId]
+    );
+    return Number(rows[0]?.total || 0);
+  } catch (_e) {
+    return 0;
+  } finally {
+    conn.release();
+  }
+}
+
 async function logPushResults(userType, userId, messages, tickets) {
   const conn = await pool.getConnection();
   try {
@@ -83,6 +98,7 @@ async function sendPushToUser(userType, userId, { title, body, data, sound = 'de
     rateMap.set(key, recent);
     const tokens = await getUserTokens(userType, userId);
     if (!tokens || tokens.length === 0) return { sent: 0 };
+    const badge = await getTotalUnread(userType, userId);
     const messages = [];
     for (const t of tokens) {
       const token = t.token;
@@ -93,6 +109,7 @@ async function sendPushToUser(userType, userId, { title, body, data, sound = 'de
         body: t.allow_preview ? body : 'New message',
         data,
         sound,
+        badge,
       });
     }
     if (messages.length === 0) return { sent: 0 };

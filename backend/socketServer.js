@@ -3,6 +3,7 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const chatCtrl = require('./controllers/chatController');
 const pool = require('./db');
+const { sendPushToUser } = require('./utils/push');
 
 /**
  * Helper to compute a conversation room id for DM chats
@@ -185,6 +186,17 @@ class SocketServer {
             receiver_id,
             sent_at: saved.sent_at,
             message: saved.message,
+          });
+          const senderUserRoom = `user:${sender_type}:${sender_id}`;
+          this.io.to(senderUserRoom).emit('dm:started', {
+            other_party_type: receiver_type,
+            other_party_id: receiver_id,
+            last_message_at: saved.sent_at,
+          });
+          this.io.to(receiverUserRoom).emit('dm:started', {
+            other_party_type: sender_type,
+            other_party_id: sender_id,
+            last_message_at: saved.sent_at,
           });
           console.log('[socket] DM message emitted to', roomId, 'and notify to', receiverUserRoom);
           if (ack) ack({ ok: true, delivered: true, message: saved });
