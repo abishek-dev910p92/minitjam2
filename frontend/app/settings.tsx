@@ -63,8 +63,8 @@ export default function SettingsScreen() {
       {/* Settings List */}
   <ScrollView refreshControl={usePullToRefresh().refreshControl}>
      <SettingsItem label="Account's" path="/Accounts" />
-       {/* <SettingsItem label="Privacy Policy" path="/privacy" />*/}
-     <SettingsItem label="Notifications" path="/notificationSettings"  />
+      <SettingsItem label="Privacy" path="/privacy" />
+      <SettingsItem label="Notifications" path="/notificationSettings"  />
         <SettingsItem label="Linked Accounts" path="/linkedAccounts"  />
         <SettingsItem label="Help & Support" path="/helpSupport"  />
         <SettingsItem label="About us"  path="/Aboutus"  />

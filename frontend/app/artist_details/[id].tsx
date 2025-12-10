@@ -12,6 +12,7 @@ import {
     View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import apiEndpoints from '../api/baseUrl';
 
 // Get screen width for responsive image/layout adjustments
@@ -74,6 +75,12 @@ const ArtistProfileScreen = () => {
 
         return () => { cancelled = true; controller.abort(); };
     }, [artistId]);
+    useFocusEffect(React.useCallback(() => {
+        let cancelled = false;
+        const controller = new AbortController();
+        fetchArtist(controller, () => cancelled);
+        return () => { cancelled = true; controller.abort(); };
+    }, [artistId]));
 
     // --- Handlers ---
     const handleBackPress = () => {
@@ -233,16 +240,16 @@ const ArtistProfileScreen = () => {
                     <Text style={[styles.sectionTitle, styles.paddingHorizontal]}>Contact</Text>
 
                     {renderContactItem(
-                        <Text style={{ fontSize: 24 }}>{'@'}</Text>, // Mock Email Icon
+                        <Text style={{ fontSize: 24 }}>{'@'}</Text>,
                         'Email',
-                        artist?.email ?? 'ethan.carter@email.com',
+                        String(artist?.email ?? 'ethan.carter@email.com'),
                         artist?.email ? handleEmailPress : undefined
                     )}
 
                     {renderContactItem(
-                        <Text style={{ fontSize: 24 }}>📞</Text>, // Mock Phone Icon
+                        <Text style={{ fontSize: 24 }}>📞</Text>,
                         'Phone',
-                        artist?.phone ?? 'not available',
+                        String(artist?.phone ?? 'not available'),
                         artist?.phone ? () => console.log('Call phone') : undefined
                     )}
 

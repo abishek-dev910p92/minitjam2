@@ -25,6 +25,69 @@ async function getArtist(req, res) {
       // ignore if Media table doesn't exist
     }
 
+    try {
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS UserPrivacy (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          owner_type VARCHAR(16) NOT NULL,
+          owner_id INT NOT NULL,
+          show_email TINYINT(1) DEFAULT 0,
+          show_mobile TINYINT(1) DEFAULT 0,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uniq_owner (owner_type, owner_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;`);
+    } catch {}
+
+    try {
+      const [prefsRows] = await conn.query('SELECT show_email, show_mobile FROM UserPrivacy WHERE owner_type = ? AND owner_id = ?', ['artist', id]);
+      const prefs = prefsRows[0] || { show_email: 0, show_mobile: 0 };
+      console.log('getArtist: privacy prefs', { artistId: id, show_email: !!prefs.show_email, show_mobile: !!prefs.show_mobile });
+      function maskEmail(email) {
+        if (!email || typeof email !== 'string') return email;
+        const parts = email.split('@');
+        if (parts.length !== 2) return email.replace(/.(?=.{2})/g, '*');
+        const local = parts[0];
+        const domain = parts[1];
+        const keep = Math.min(1, local.length);
+        const maskedLocal = local.slice(0, keep) + '*'.repeat(Math.max(0, local.length - keep));
+        return `${maskedLocal}@${domain}`;
+      }
+      function maskPhone(phone) {
+        if (!phone || typeof phone !== 'string') return phone;
+        const digits = phone.replace(/\D/g, '');
+        const keep = Math.min(4, digits.length);
+        let out = '';
+        let digitIndex = 0;
+        const cutoff = Math.max(0, digits.length - keep);
+        for (const ch of phone) {
+          if (/\d/.test(ch)) {
+            out += (digitIndex < cutoff) ? '*' : ch;
+            digitIndex++;
+          } else {
+            out += ch;
+          }
+        }
+        return out;
+      }
+      if (!prefs.show_email && artist.email) {
+        const masked = maskEmail(artist.email);
+        if (masked !== artist.email) console.log('getArtist: masked email', { artistId: id });
+        artist.email = masked;
+      }
+      if (!prefs.show_mobile && artist.phone) {
+        const masked = maskPhone(artist.phone);
+        if (masked !== artist.phone) console.log('getArtist: masked phone', { artistId: id });
+        artist.phone = masked;
+      }
+    } catch (e) {
+      console.warn('getArtist: privacy mask failed', { artistId: id, error: e && e.message });
+    }
+
+    try {
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+    } catch {}
     return res.json({ ...artist, media });
   } finally {
     conn.release();

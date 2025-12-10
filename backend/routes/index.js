@@ -13,5 +13,6 @@ router.use('/media', require('./media'));
 router.use('/venues', require('./venues'));
 router.use('/music-stores', require('./musicStores'));
 router.use('/notifications', require('./notifications'));
+router.use('/privacy', require('./privacy'));
 
 module.exports = router;

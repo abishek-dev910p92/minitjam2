@@ -1,10 +1,10 @@
  
-const apiUrl = "http://192.168.0.2:3000/api/";
+const apiUrl = "https://636df9205d4e.ngrok-free.app/api/";
 
 // This is a cleaner way to manage API endpoints.
  
 const apiEndpoints = {
-  baseURL: "http://192.168.0.2:3000/api/",
+  baseURL: "https://636df9205d4e.ngrok-free.app/api/",
   login: `${apiUrl}auth/login`,
   signup: `${apiUrl}auth/signup/artist`,
   otp: `${apiUrl}auth/otp/send`,  

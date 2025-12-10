@@ -999,7 +999,7 @@ export default function SearchScreen() {
           >
             <View style={styles.header}>
                <Link href="/(tabs)" style={styles.iconContainer}>
-                <ArrowLeftIcon />
+               
               </Link> 
                
             </View>

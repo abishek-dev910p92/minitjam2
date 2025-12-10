@@ -15,10 +15,10 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuthStore } from '../../utils/authStore';
+import useAuthStore from '../_utils/authStore';
+import { router } from 'expo-router';
 import apiEndpoints from '../api/baseUrl';
 import Dropdown from './Dropdown';
-import { Link } from "expo-router";
 
 const FinalOnboardingScreen = () => {
   const { completeOnboarding } = useAuthStore();
@@ -259,10 +259,8 @@ const FinalOnboardingScreen = () => {
         <TouchableOpacity style={styles.button} onPress={verfyOtp}>
           <Text style={styles.buttonText}>Sign Up & Complete</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={completeOnboarding}>
-           
+        <TouchableOpacity onPress={() => { try { completeOnboarding(); router.push('/sign-in'); } catch {} }}>
           <Text style={styles.loginText}>Already have an account? Log In</Text>
-           
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

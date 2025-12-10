@@ -174,7 +174,7 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
         });
 
         // DM notifications via per-user room — count only when current user is receiver
-        notifySocketRef.current.on('notify:new_message', (msg: any) => {
+        notifySocketRef.current.on('notify:new_message', async (msg: any) => {
           try {
             const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
             const currentUserId = (user as any)?.artist_id ?? (user as any)?.id ?? '';
@@ -186,9 +186,11 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
             const key = makePartyKey(otherType, otherId);
             incrementUnread(key, { star: true, previewText: String(msg?.message ?? ''), title: 'New message' });
             try {
-              const Notifications = await import('expo-notifications');
-              const total = useNotificationStore.getState().totalUnread || 0;
-              Notifications.setBadgeCountAsync?.(total);
+              if (Constants.appOwnership !== 'expo') {
+                const Notifications = await import('expo-notifications');
+                const total = useNotificationStore.getState().totalUnread || 0;
+                Notifications.setBadgeCountAsync?.(total);
+              }
             } catch {}
           } catch {}
         });
@@ -209,7 +211,7 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
         } catch {}
 
         // Group messages — count only when sent by someone else
-        notifySocketRef.current.on('group:message', (msg: any) => {
+        notifySocketRef.current.on('group:message', async (msg: any) => {
           try {
             const roomId = msg?.room_id;
             if (!roomId) return;
@@ -220,14 +222,16 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
             const key = makePartyKey('group', String(roomId));
             incrementUnread(key, { star: true, previewText: String(msg?.ciphertext ?? ''), title: 'New group message' });
             try {
-              const Notifications = await import('expo-notifications');
-              const total = useNotificationStore.getState().totalUnread || 0;
-              Notifications.setBadgeCountAsync?.(total);
+              if (Constants.appOwnership !== 'expo') {
+                const Notifications = await import('expo-notifications');
+                const total = useNotificationStore.getState().totalUnread || 0;
+                Notifications.setBadgeCountAsync?.(total);
+              }
             } catch {}
           } catch {}
         });
 
-        notifySocketRef.current.on('new-message', (msg: any) => {
+        notifySocketRef.current.on('new-message', async (msg: any) => {
           try {
             if (!msg || msg.chat_id == null || msg.sender_id == null || msg.receiver_id == null) return;
             const currentUserType = (user as any)?.artist_id ? 'artist' : 'club';
@@ -238,9 +242,11 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
             const key = makePartyKey(msg.sender_type, msg.sender_id);
             incrementUnread(key, { star: true, previewText: String(msg?.message ?? ''), title: 'New message', force: true });
             try {
-              const Notifications = await import('expo-notifications');
-              const total = useNotificationStore.getState().totalUnread || 0;
-              Notifications.setBadgeCountAsync?.(total);
+              if (Constants.appOwnership !== 'expo') {
+                const Notifications = await import('expo-notifications');
+                const total = useNotificationStore.getState().totalUnread || 0;
+                Notifications.setBadgeCountAsync?.(total);
+              }
             } catch {}
           } catch {}
         });
@@ -260,9 +266,11 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
             try { (useNotificationStore as any).setState?.({}); } catch {}
             try { useNotificationStore.getState().setUnreadFromServer(map); } catch {}
             try {
-              const Notifications = await import('expo-notifications');
-              const total = useNotificationStore.getState().totalUnread || 0;
-              Notifications.setBadgeCountAsync?.(total);
+              if (Constants.appOwnership !== 'expo') {
+                const Notifications = await import('expo-notifications');
+                const total = useNotificationStore.getState().totalUnread || 0;
+                Notifications.setBadgeCountAsync?.(total);
+              }
             } catch {}
           }
         } catch {}
@@ -310,6 +318,7 @@ const rehydrateError = useNotificationStore((s) => s.rehydrateError);
     <Stack.Screen name="helpSupport" options={{ headerShown: false }} />
     <Stack.Screen name="linkedAccounts" options={{ headerShown: false }} />
     <Stack.Screen name="Aboutus" options={{ headerShown: false }} />
+    <Stack.Screen name="privacy" options={{ headerShown: false }} />
     </Stack>
     </SafeAreaProvider>
     

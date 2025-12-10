@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router'; 
 import { SvgXml } from 'react-native-svg';
 import usePullToRefresh from './_utils/usePullToRefresh';
 const ArrowLeftIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24px" height="24px" fill="currentColor" viewBox="0 0 256 256"><path d="M224,128a8,8,0,0,1-8,8H59.31l58.35,58.34a8,8,0,0,1-11.32,11.32l-72-72a8,8,0,0,1,0-11.32l72-72a8,8,0,0,1,11.32,11.32L59.31,120H216A8,8,0,0,1,224,128Z"></path></svg>`;
@@ -51,7 +52,7 @@ const ContactItem = ({ text, icon }: { text: string; icon: string }) => (
     <View style={styles.contactIcon}>
       <SvgXml xml={icon} width="24" height="24" fill="#16120f" />
     </View>
-  </TouchableOpacity>
+  </TouchableOpacity> 
 );
 
 const HelpAndSupportScreen = () => {
@@ -62,7 +63,7 @@ const HelpAndSupportScreen = () => {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.headerIcon}>
+          <TouchableOpacity style={styles.headerIcon} onPress={() => router.back()}>
             <SvgXml xml={ArrowLeftIcon} width="24" height="24" fill="#16120f" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Help & Support</Text>

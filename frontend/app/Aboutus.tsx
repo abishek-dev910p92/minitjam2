@@ -1,5 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SvgXml } from 'react-native-svg';
 import usePullToRefresh from './_utils/usePullToRefresh';
@@ -11,7 +12,7 @@ const AboutUsScreen = () => {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.headerIcon}>
+          <TouchableOpacity style={styles.headerIcon} onPress={() => router.back()}>
             <SvgXml xml={ArrowLeftIcon} width="24" height="24" fill="#151414" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>About Us</Text>

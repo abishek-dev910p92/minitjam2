@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { Link } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import useUserData from '../_utils/Localstorage';
 import usePullToRefresh from '../_utils/usePullToRefresh';
 import apiEndpoints from '../api/baseUrl';
@@ -113,6 +114,92 @@ const TestimonialCard = ({ name, time, review, imageUrl }: { name: string, time:
 // --- Main Component ---
 export default function ProfileScreen() {
     const { user, setUser } = useUserData();
+    const [privacyPrefs, setPrivacyPrefs] = useState<{ showMobile: boolean; showEmail: boolean }>({ showMobile: false, showEmail: false });
+    useEffect(() => {
+        let cancelled = false;
+        const load = async () => {
+            try {
+                const token = await AsyncStorage.getItem('userToken');
+                if (token) {
+                    const res = await fetch(apiEndpoints.baseURL + 'privacy', { headers: { Authorization: `Bearer ${token}` } });
+                    if (res.ok) {
+                        const j = await res.json();
+                        const next = { showMobile: !!j.show_mobile, showEmail: !!j.show_email };
+                        if (!cancelled) setPrivacyPrefs(next);
+                        await AsyncStorage.setItem('privacy:prefs', JSON.stringify(next));
+                    } else {
+                        const raw = await AsyncStorage.getItem('privacy:prefs');
+                        if (raw && !cancelled) {
+                            try { setPrivacyPrefs(JSON.parse(raw)); } catch {}
+                        }
+                    }
+                } else {
+                    const raw = await AsyncStorage.getItem('privacy:prefs');
+                    if (raw && !cancelled) {
+                        try { setPrivacyPrefs(JSON.parse(raw)); } catch {}
+                    }
+                }
+            } catch {}
+        };
+        load();
+        return () => { cancelled = true; };
+    }, []);
+    useFocusEffect(React.useCallback(() => {
+        let cancelled = false;
+        const load = async () => {
+            try {
+                const token = await AsyncStorage.getItem('userToken');
+                if (token) {
+                    const res = await fetch(apiEndpoints.baseURL + 'privacy', { headers: { Authorization: `Bearer ${token}` } });
+                    if (res.ok) {
+                        const j = await res.json();
+                        const next = { showMobile: !!j.show_mobile, showEmail: !!j.show_email };
+                        if (!cancelled) setPrivacyPrefs(next);
+                        await AsyncStorage.setItem('privacy:prefs', JSON.stringify(next));
+                    } else {
+                        const raw = await AsyncStorage.getItem('privacy:prefs');
+                        if (raw && !cancelled) {
+                            try { setPrivacyPrefs(JSON.parse(raw)); } catch {}
+                        }
+                    }
+                } else {
+                    const raw = await AsyncStorage.getItem('privacy:prefs');
+                    if (raw && !cancelled) {
+                        try { setPrivacyPrefs(JSON.parse(raw)); } catch {}
+                    }
+                }
+            } catch {}
+        };
+        load();
+        return () => { cancelled = true; };
+    }, []));
+    const maskEmail = (email?: string | null) => {
+        if (!email) return email as any;
+        const parts = String(email).split('@');
+        if (parts.length !== 2) return String(email).replace(/.(?=.{2})/g, '*');
+        const local = parts[0];
+        const domain = parts[1];
+        const keep = Math.min(1, local.length);
+        const maskedLocal = local.slice(0, keep) + '*'.repeat(Math.max(0, local.length - keep));
+        return `${maskedLocal}@${domain}`;
+    };
+    const maskPhone = (phone?: string | null) => {
+        if (!phone) return phone as any;
+        const digits = String(phone).replace(/\D/g, '');
+        const keep = Math.min(4, digits.length);
+        let out = '';
+        let digitIndex = 0;
+        const cutoff = Math.max(0, digits.length - keep);
+        for (const ch of String(phone)) {
+            if (/\d/.test(ch)) {
+                out += (digitIndex < cutoff) ? '*' : ch;
+                digitIndex++;
+            } else {
+                out += ch;
+            }
+        }
+        return out;
+    };
     // Local state to immediately show a freshly uploaded profile image
     const [displayProfileImage, setDisplayProfileImage] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
@@ -614,8 +701,8 @@ export default function ProfileScreen() {
                         <GenreTag label={GENRES.find(g => g.id === parseInt((user as any)?.genre_id))?.name || 'Unknown'} />
                     )}
                 </View>
-                            <Text style={styles.textSecondary}>+91 {(user as any)?.phone || 'Loading'}</Text>
-                            <Text style={styles.textSecondary}>{(user as any)?.email || 'Loading'}</Text>
+                            <Text style={styles.textSecondary}>+91 {privacyPrefs.showMobile ? String((user as any)?.phone || 'Loading') : maskPhone(String((user as any)?.phone || 'Loading'))}</Text>
+                            <Text style={styles.textSecondary}>{privacyPrefs.showEmail ? String((user as any)?.email || 'Loading') : maskEmail(String((user as any)?.email || 'Loading'))}</Text>
                             <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.editButton}>
                                 <Text style={styles.editButtonText}>Edit Profile</Text>
                             </TouchableOpacity>

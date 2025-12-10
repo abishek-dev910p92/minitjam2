@@ -504,9 +504,7 @@ export default function MessagesScreen() {
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.iconContainer}>
-          <ArrowLeftIcon />
-        </TouchableOpacity>
+         
         <Text style={styles.headerTitle}>Messages</Text>
         {/* <TouchableOpacity style={styles.createGroupButton} onPress={() => setGroupModalOpen(true)}>
           <Text style={styles.createGroupButtonText}>Create Group Chat</Text>
