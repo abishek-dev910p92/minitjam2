@@ -1,14 +1,17 @@
  
-const apiUrl = "https://636df9205d4e.ngrok-free.app/api/";
+const apiUrl = "http://192.168.0.3:3000/api/";
 
 // This is a cleaner way to manage API endpoints.
  
 const apiEndpoints = {
-  baseURL: "https://636df9205d4e.ngrok-free.app/api/",
+  baseURL: "http://192.168.0.3:3000/api/",
   login: `${apiUrl}auth/login`,
   signup: `${apiUrl}auth/signup/artist`,
+  signupClub: `${apiUrl}auth/signup/club`,
   otp: `${apiUrl}auth/otp/send`,  
   verify: `${apiUrl}auth/otp/verify`,
+  forgotPassword: `${apiUrl}auth/password/forgot`,
+  resetPassword: `${apiUrl}auth/password/reset`,
   genres: `${apiUrl}genres`,
   // Added search endpoints
   artistSearch: `${apiUrl}artists/search`,

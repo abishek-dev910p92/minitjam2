@@ -1,65 +1,134 @@
-import { deleteItemAsync, getItem, setItem } from 'expo-secure-store';
+import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { secureTokenStorage } from './secureTokenStorage';
+import { tokenRefreshManager } from './tokenRefreshManager';
 
-// Define the state and actions for the store
+type UserRole = 'artist' | 'club' | null;
+
 type UserState = {
   isLoggedIn: boolean;
   shouldCreateAccount: boolean;
-  hasCreatedAccount: boolean; 
-  login: () => void;
-  logOut: () => void;
+  hasCreatedAccount: boolean;
+  userRole: UserRole;
+  userData: any | null;
+  token: string | null;
+  refreshTokenValue: string | null;
+  login: (token: string, refreshToken: string, userData: any, role: Exclude<UserRole, null>) => Promise<void>;
+  logOut: () => Promise<void>;
   completeOnboarding: () => void;
   resetOnboarding: () => void;
+  createAccount: () => void;
+  reset: () => void;
+  hydrate: () => Promise<void>;
+  refreshToken: () => Promise<string | null>;
+  getValidToken: () => Promise<string | null>;
 };
 
-// Custom storage object for Zustand's persist middleware, using expo-secure-store
-// This object must return a key-value store with getItem, setItem, and removeItem methods.
 const secureStoreStorage = {
-  getItem: (name: string) => {
-    return getItem(name);
+  getItem: async (name: string) => {
+    const value = await SecureStore.getItemAsync(name);
+    return value ?? null;
   },
-  setItem: (name: string, value: string) => {
-    setItem(name, value);
+  setItem: async (name: string, value: string) => {
+    await SecureStore.setItemAsync(name, value);
   },
-  removeItem: (name: string) => {
-    deleteItemAsync(name);
+  removeItem: async (name: string) => {
+    await SecureStore.deleteItemAsync(name);
   },
 };
 
-const useAuthStore = create(
-  persist<UserState>(
-    (set) => ({
-      // Initial state
+const useAuthStore = create<UserState>()(
+  persist(
+    (set, get) => ({
       isLoggedIn: false,
       shouldCreateAccount: false,
       hasCreatedAccount: false,
-      // Actions to update the state
-      login: () =>
+      userRole: null,
+      userData: null,
+      token: null,
+      refreshTokenValue: null,
+
+      login: async (token, refreshToken, userData, role) => {
+        await secureTokenStorage.storeToken(token);
+        await secureTokenStorage.storeRefreshToken(refreshToken);
+        await secureTokenStorage.storeUserData(userData);
         set({
           isLoggedIn: true,
-        }),
-      logOut: () =>
+          token,
+          refreshTokenValue: refreshToken,
+          userData,
+          userRole: role,
+        });
+      },
+
+      logOut: async () => {
+        await secureTokenStorage.clearAll();
         set({
           isLoggedIn: false,
-        }),
-      completeOnboarding: () => set({ hasCreatedAccount: true }),
-      createAccount: () => {
-    set({ hasCreatedAccount: true, shouldCreateAccount: false });
-  },
+          token: null,
+          refreshTokenValue: null,
+          userData: null,
+          userRole: null,
+        });
+      },
+
+      completeOnboarding: () => set({ hasCreatedAccount: true, shouldCreateAccount: false }),
+      createAccount: () => set({ hasCreatedAccount: true, shouldCreateAccount: false }),
       resetOnboarding: () => set({ shouldCreateAccount: false, hasCreatedAccount: false }),
 
-        reset: () =>
+      reset: () =>
         set({
           isLoggedIn: false,
           shouldCreateAccount: false,
           hasCreatedAccount: false,
+          userRole: null,
+          userData: null,
+          token: null,
+          refreshTokenValue: null,
         }),
+
+      hydrate: async () => {
+        const token = await secureTokenStorage.getToken();
+        const refreshTokenValue = await secureTokenStorage.getRefreshToken();
+        const userData = await secureTokenStorage.getUserData();
+        set({
+          token,
+          refreshTokenValue,
+          userData,
+          isLoggedIn: !!token,
+        });
+      },
+
+      refreshToken: async () => {
+        const newToken = await tokenRefreshManager.refreshToken();
+        if (!newToken) {
+          await get().logOut();
+          return null;
+        }
+        set({ token: newToken, isLoggedIn: true });
+        return newToken;
+      },
+
+      getValidToken: async () => {
+        const token = await tokenRefreshManager.checkAndRefreshToken();
+        if (!token) return null;
+        set({ token, isLoggedIn: true });
+        return token;
+      },
     }),
     {
       name: 'auth-storage',
-      // Pass the custom storage object to createJSONStorage
       storage: createJSONStorage(() => secureStoreStorage),
+      onRehydrateStorage: () => (state, err) => {
+        if (!err) state?.hydrate?.();
+      },
+      partialize: (state) => ({
+        isLoggedIn: state.isLoggedIn,
+        shouldCreateAccount: state.shouldCreateAccount,
+        hasCreatedAccount: state.hasCreatedAccount,
+        userRole: state.userRole,
+      }),
     }
   )
 );
